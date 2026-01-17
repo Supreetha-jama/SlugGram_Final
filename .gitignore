@@ -1,0 +1,15 @@
+# Python temporary files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# Environment variables (secrets)
+.env
+
+# VS Code settings
+.vscode/
