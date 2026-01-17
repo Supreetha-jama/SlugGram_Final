@@ -1,0 +1,1 @@
+print("SlugGram is officially running!")
