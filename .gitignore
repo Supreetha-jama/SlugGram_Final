@@ -13,3 +13,10 @@ env/
 
 # VS Code settings
 .vscode/
+
+# Frontend junk
+node_modules/
+.next/
+out/
+build/
+.env.local
