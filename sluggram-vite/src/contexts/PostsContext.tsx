@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect, type ReactNode } from 'react';
 import { useAuth0 } from '@auth0/auth0-react';
+import { api, type Post as ApiPost, type PostCreate } from '../lib/api';
 
 export interface Post {
   id: string;
@@ -38,16 +39,51 @@ export interface Comment {
 interface PostsContextType {
   posts: Post[];
   savedPosts: string[];
-  addPost: (post: Omit<Post, 'id' | 'timestamp' | 'likes' | 'comments' | 'authorId' | 'authorName' | 'authorAvatar'>) => void;
-  likePost: (postId: string) => void;
-  addComment: (postId: string, text: string) => void;
-  joinStudyGroup: (postId: string) => void;
-  savePost: (postId: string) => void;
+  loading: boolean;
+  addPost: (post: Omit<Post, 'id' | 'timestamp' | 'likes' | 'comments' | 'authorId' | 'authorName' | 'authorAvatar'>) => Promise<void>;
+  likePost: (postId: string) => Promise<void>;
+  addComment: (postId: string, text: string) => Promise<void>;
+  joinStudyGroup: (postId: string) => Promise<void>;
+  savePost: (postId: string) => Promise<void>;
+  refreshPosts: () => Promise<void>;
 }
 
 const PostsContext = createContext<PostsContextType | null>(null);
 
-// Sample posts
+// Convert API post to frontend format
+function convertPost(apiPost: ApiPost): Post {
+  return {
+    id: apiPost.id,
+    type: apiPost.type,
+    authorId: apiPost.author_id,
+    authorName: apiPost.author_name,
+    authorAvatar: apiPost.author_avatar,
+    content: apiPost.content,
+    imageUrl: apiPost.image_url,
+    videoUrl: apiPost.video_url,
+    timestamp: new Date(apiPost.created_at).getTime(),
+    likes: apiPost.likes,
+    comments: apiPost.comments.map(c => ({
+      id: c.id,
+      authorId: c.author_id,
+      authorName: c.author_name,
+      text: c.text,
+      timestamp: new Date(c.created_at).getTime(),
+    })),
+    eventTitle: apiPost.event_title,
+    eventDate: apiPost.event_date,
+    eventTime: apiPost.event_time,
+    eventLocation: apiPost.event_location,
+    groupName: apiPost.group_name,
+    course: apiPost.course,
+    meetingTime: apiPost.meeting_time,
+    studyLocation: apiPost.study_location,
+    maxMembers: apiPost.max_members,
+    members: apiPost.members,
+  };
+}
+
+// Sample posts for when backend is not available
 const samplePosts: Post[] = [
   {
     id: '1',
@@ -94,19 +130,6 @@ const samplePosts: Post[] = [
   },
   {
     id: '4',
-    type: 'general',
-    authorId: 'user4',
-    authorName: 'jordan_k',
-    content: 'Finals week survival kit: coffee, snacks, and good friends',
-    imageUrl: 'https://images.unsplash.com/photo-1481627834876-b7833e8f5570?w=600',
-    timestamp: Date.now() - 1000 * 60 * 60 * 48,
-    likes: ['user1', 'user2', 'user3', 'user5'],
-    comments: [
-      { id: 'c2', authorId: 'user1', authorName: 'sammy_slug', text: 'We got this!', timestamp: Date.now() - 1000 * 60 * 60 * 47 }
-    ],
-  },
-  {
-    id: '5',
     type: 'reel',
     authorId: 'user1',
     authorName: 'sammy_slug',
@@ -116,61 +139,118 @@ const samplePosts: Post[] = [
     likes: ['user2', 'user4'],
     comments: [],
   },
-  {
-    id: '6',
-    type: 'reel',
-    authorId: 'user2',
-    authorName: 'alex_cs26',
-    content: 'Cute bunny video!',
-    videoUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4',
-    timestamp: Date.now() - 1000 * 60 * 60 * 6,
-    likes: ['user1', 'user3'],
-    comments: [],
-  },
-  {
-    id: '7',
-    type: 'reel',
-    authorId: 'user3',
-    authorName: 'maria_chem',
-    content: 'Nature vibes at UCSC',
-    imageUrl: 'https://images.unsplash.com/photo-1441974231531-c6227db76b6e?w=600',
-    timestamp: Date.now() - 1000 * 60 * 60 * 8,
-    likes: ['user1', 'user2'],
-    comments: [],
-  },
 ];
 
 export function PostsProvider({ children }: { children: ReactNode }) {
-  const { user } = useAuth0();
+  const { user, getAccessTokenSilently, isAuthenticated } = useAuth0();
   const [posts, setPosts] = useState<Post[]>([]);
   const [savedPosts, setSavedPosts] = useState<string[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [useLocalStorage, setUseLocalStorage] = useState(false);
 
-  // Load posts from localStorage on mount
+  // Set up API token when authenticated
   useEffect(() => {
-    const storedPosts = localStorage.getItem('sluggram_posts');
-    if (storedPosts) {
-      setPosts(JSON.parse(storedPosts));
-    } else {
-      setPosts(samplePosts);
-      localStorage.setItem('sluggram_posts', JSON.stringify(samplePosts));
+    async function setupToken() {
+      if (isAuthenticated) {
+        try {
+          const token = await getAccessTokenSilently();
+          api.setToken(token);
+        } catch (error) {
+          // If we can't get a token, we'll use localStorage mode
+          console.log('Using localStorage mode (no API token available)');
+          setUseLocalStorage(true);
+        }
+      }
     }
+    setupToken();
+  }, [isAuthenticated, getAccessTokenSilently]);
 
-    // Load saved posts
-    const storedSavedPosts = localStorage.getItem('sluggram_saved_posts');
-    if (storedSavedPosts) {
-      setSavedPosts(JSON.parse(storedSavedPosts));
+  // Fetch posts from API or localStorage
+  const refreshPosts = async () => {
+    setLoading(true);
+    try {
+      if (!useLocalStorage) {
+        const apiPosts = await api.getPosts();
+        setPosts(apiPosts.map(convertPost));
+
+        // Get saved posts
+        try {
+          const saved = await api.getSavedPosts();
+          setSavedPosts(saved.map(p => p.id));
+        } catch {
+          setSavedPosts([]);
+        }
+      } else {
+        // Fallback to localStorage
+        const storedPosts = localStorage.getItem('sluggram_posts');
+        if (storedPosts) {
+          setPosts(JSON.parse(storedPosts));
+        } else {
+          setPosts(samplePosts);
+          localStorage.setItem('sluggram_posts', JSON.stringify(samplePosts));
+        }
+
+        const storedSavedPosts = localStorage.getItem('sluggram_saved_posts');
+        if (storedSavedPosts) {
+          setSavedPosts(JSON.parse(storedSavedPosts));
+        }
+      }
+    } catch (error) {
+      console.error('Failed to fetch posts, using localStorage:', error);
+      setUseLocalStorage(true);
+
+      // Load from localStorage
+      const storedPosts = localStorage.getItem('sluggram_posts');
+      if (storedPosts) {
+        setPosts(JSON.parse(storedPosts));
+      } else {
+        setPosts(samplePosts);
+      }
+    } finally {
+      setLoading(false);
     }
-  }, []);
+  };
 
-  // Save posts to localStorage whenever they change
+  // Load posts on mount
   useEffect(() => {
-    if (posts.length > 0) {
+    refreshPosts();
+  }, [useLocalStorage]);
+
+  // Save to localStorage when in localStorage mode
+  useEffect(() => {
+    if (useLocalStorage && posts.length > 0) {
       localStorage.setItem('sluggram_posts', JSON.stringify(posts));
     }
-  }, [posts]);
+  }, [posts, useLocalStorage]);
 
-  const addPost = (postData: Omit<Post, 'id' | 'timestamp' | 'likes' | 'comments' | 'authorId' | 'authorName' | 'authorAvatar'>) => {
-    // Get username from profile if available
+  const addPost = async (postData: Omit<Post, 'id' | 'timestamp' | 'likes' | 'comments' | 'authorId' | 'authorName' | 'authorAvatar'>) => {
+    if (!useLocalStorage) {
+      try {
+        const createData: PostCreate = {
+          type: postData.type,
+          content: postData.content,
+          image_url: postData.imageUrl,
+          video_url: postData.videoUrl,
+          event_title: postData.eventTitle,
+          event_date: postData.eventDate,
+          event_time: postData.eventTime,
+          event_location: postData.eventLocation,
+          group_name: postData.groupName,
+          course: postData.course,
+          meeting_time: postData.meetingTime,
+          study_location: postData.studyLocation,
+          max_members: postData.maxMembers,
+        };
+
+        const newPost = await api.createPost(createData);
+        setPosts(prev => [convertPost(newPost), ...prev]);
+        return;
+      } catch (error) {
+        console.error('Failed to create post via API:', error);
+      }
+    }
+
+    // Fallback to localStorage
     let authorName = user?.name || 'Anonymous Slug';
     const savedProfile = localStorage.getItem('sluggram_profile');
     if (savedProfile) {
@@ -193,7 +273,20 @@ export function PostsProvider({ children }: { children: ReactNode }) {
     setPosts(prev => [newPost, ...prev]);
   };
 
-  const likePost = (postId: string) => {
+  const likePost = async (postId: string) => {
+    if (!useLocalStorage) {
+      try {
+        const updatedPost = await api.likePost(postId);
+        setPosts(prev =>
+          prev.map(post => post.id === postId ? convertPost(updatedPost) : post)
+        );
+        return;
+      } catch (error) {
+        console.error('Failed to like post via API:', error);
+      }
+    }
+
+    // Fallback to localStorage
     const userId = user?.sub || 'anonymous';
     setPosts(prev =>
       prev.map(post => {
@@ -211,8 +304,20 @@ export function PostsProvider({ children }: { children: ReactNode }) {
     );
   };
 
-  const addComment = (postId: string, text: string) => {
-    // Get username from profile if available
+  const addComment = async (postId: string, text: string) => {
+    if (!useLocalStorage) {
+      try {
+        const updatedPost = await api.commentPost(postId, text);
+        setPosts(prev =>
+          prev.map(post => post.id === postId ? convertPost(updatedPost) : post)
+        );
+        return;
+      } catch (error) {
+        console.error('Failed to add comment via API:', error);
+      }
+    }
+
+    // Fallback to localStorage
     let authorName = user?.name || 'Anonymous Slug';
     const savedProfile = localStorage.getItem('sluggram_profile');
     if (savedProfile) {
@@ -237,7 +342,20 @@ export function PostsProvider({ children }: { children: ReactNode }) {
     );
   };
 
-  const joinStudyGroup = (postId: string) => {
+  const joinStudyGroup = async (postId: string) => {
+    if (!useLocalStorage) {
+      try {
+        const updatedPost = await api.joinStudyGroup(postId);
+        setPosts(prev =>
+          prev.map(post => post.id === postId ? convertPost(updatedPost) : post)
+        );
+        return;
+      } catch (error) {
+        console.error('Failed to join study group via API:', error);
+      }
+    }
+
+    // Fallback to localStorage
     const userId = user?.sub || 'anonymous';
     setPosts(prev =>
       prev.map(post => {
@@ -255,7 +373,21 @@ export function PostsProvider({ children }: { children: ReactNode }) {
     );
   };
 
-  const savePost = (postId: string) => {
+  const savePost = async (postId: string) => {
+    if (!useLocalStorage) {
+      try {
+        await api.savePost(postId);
+        setSavedPosts(prev => {
+          const isSaved = prev.includes(postId);
+          return isSaved ? prev.filter(id => id !== postId) : [...prev, postId];
+        });
+        return;
+      } catch (error) {
+        console.error('Failed to save post via API:', error);
+      }
+    }
+
+    // Fallback to localStorage
     setSavedPosts(prev => {
       const isSaved = prev.includes(postId);
       const newSavedPosts = isSaved
@@ -267,7 +399,7 @@ export function PostsProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <PostsContext.Provider value={{ posts, savedPosts, addPost, likePost, addComment, joinStudyGroup, savePost }}>
+    <PostsContext.Provider value={{ posts, savedPosts, loading, addPost, likePost, addComment, joinStudyGroup, savePost, refreshPosts }}>
       {children}
     </PostsContext.Provider>
   );
