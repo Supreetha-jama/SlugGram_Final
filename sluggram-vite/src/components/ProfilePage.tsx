@@ -48,6 +48,7 @@ export function ProfilePage() {
   const generalPosts = userPosts.filter(post => post.type === 'general');
   const eventPosts = userPosts.filter(post => post.type === 'event');
   const studyPosts = userPosts.filter(post => post.type === 'study');
+  const reelPosts = userPosts.filter(post => post.type === 'reel');
 
   const formatTime = (timestamp: number) => {
     const diff = Date.now() - timestamp;
@@ -150,18 +151,22 @@ export function ProfilePage() {
                 {/* Stats */}
                 <div className="pt-6 border-t border-gray-200">
                   <h3 className="text-lg font-bold text-gray-900 mb-4">Activity</h3>
-                  <div className="grid grid-cols-3 gap-4 text-center">
-                    <div className="p-4 bg-gray-50 rounded-lg">
+                  <div className="grid grid-cols-4 gap-3 text-center">
+                    <div className="p-3 bg-gray-50 rounded-lg">
                       <p className="text-2xl font-bold text-ucsc-blue">{generalPosts.length}</p>
-                      <p className="text-sm text-gray-500">Posts</p>
+                      <p className="text-xs text-gray-500">Posts</p>
                     </div>
-                    <div className="p-4 bg-gray-50 rounded-lg">
-                      <p className="text-2xl font-bold text-ucsc-blue">{eventPosts.length}</p>
-                      <p className="text-sm text-gray-500">Events</p>
+                    <div className="p-3 bg-gray-50 rounded-lg">
+                      <p className="text-2xl font-bold text-pink-600">{reelPosts.length}</p>
+                      <p className="text-xs text-gray-500">Reels</p>
                     </div>
-                    <div className="p-4 bg-gray-50 rounded-lg">
-                      <p className="text-2xl font-bold text-ucsc-blue">{studyPosts.length}</p>
-                      <p className="text-sm text-gray-500">Study Groups</p>
+                    <div className="p-3 bg-gray-50 rounded-lg">
+                      <p className="text-2xl font-bold text-purple-600">{eventPosts.length}</p>
+                      <p className="text-xs text-gray-500">Events</p>
+                    </div>
+                    <div className="p-3 bg-gray-50 rounded-lg">
+                      <p className="text-2xl font-bold text-green-600">{studyPosts.length}</p>
+                      <p className="text-xs text-gray-500">Study</p>
                     </div>
                   </div>
                 </div>
@@ -259,14 +264,24 @@ export function ProfilePage() {
                     {post.type === 'general' && post.imageUrl && (
                       <img src={post.imageUrl} alt="" className="w-16 h-16 rounded-lg object-cover" />
                     )}
+                    {post.type === 'reel' && (post.imageUrl || post.videoUrl) && (
+                      <div className="w-16 h-16 rounded-lg bg-black flex items-center justify-center overflow-hidden">
+                        {post.imageUrl ? (
+                          <img src={post.imageUrl} alt="" className="w-full h-full object-cover" />
+                        ) : (
+                          <span className="text-white text-2xl">🎬</span>
+                        )}
+                      </div>
+                    )}
                     <div className="flex-1">
                       <div className="flex items-center gap-2">
                         <span className={`px-2 py-0.5 text-xs font-medium rounded ${
                           post.type === 'event' ? 'bg-purple-100 text-purple-700' :
                           post.type === 'study' ? 'bg-green-100 text-green-700' :
+                          post.type === 'reel' ? 'bg-pink-100 text-pink-700' :
                           'bg-gray-100 text-gray-700'
                         }`}>
-                          {post.type === 'event' ? 'Event' : post.type === 'study' ? 'Study Group' : 'Post'}
+                          {post.type === 'event' ? 'Event' : post.type === 'study' ? 'Study Group' : post.type === 'reel' ? 'Reel' : 'Post'}
                         </span>
                         <span className="text-xs text-gray-400">{formatTime(post.timestamp)}</span>
                       </div>

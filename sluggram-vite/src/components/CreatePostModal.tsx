@@ -1,5 +1,7 @@
 import { useState, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { usePosts } from '../contexts/PostsContext';
+import { saveVideo } from '../lib/videoStorage';
 
 interface CreatePostModalProps {
   isOpen: boolean;
@@ -10,12 +12,15 @@ type PostType = 'general' | 'event' | 'study' | 'reel';
 
 export function CreatePostModal({ isOpen, onClose }: CreatePostModalProps) {
   const { addPost } = usePosts();
+  const navigate = useNavigate();
   const [postType, setPostType] = useState<PostType>('general');
   const [caption, setCaption] = useState('');
   const [imageUrl, setImageUrl] = useState('');
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [videoUrl, setVideoUrl] = useState('');
   const [videoPreview, setVideoPreview] = useState<string | null>(null);
+  const [videoFile, setVideoFile] = useState<File | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const videoInputRef = useRef<HTMLInputElement>(null);
 
@@ -49,16 +54,22 @@ export function CreatePostModal({ isOpen, onClose }: CreatePostModalProps) {
   const handleVideoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setVideoPreview(reader.result as string);
-        setVideoUrl(reader.result as string);
-      };
-      reader.readAsDataURL(file);
+      // Check file size - limit to 100MB
+      if (file.size > 100 * 1024 * 1024) {
+        alert('Video file is too large. Please use a video under 100MB.');
+        return;
+      }
+      // Store the file for later upload to IndexedDB
+      setVideoFile(file);
+      // Create preview URL
+      const previewUrl = URL.createObjectURL(file);
+      setVideoPreview(previewUrl);
+      // Clear any manually entered URL
+      setVideoUrl('');
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (postType === 'general') {
@@ -87,12 +98,42 @@ export function CreatePostModal({ isOpen, onClose }: CreatePostModalProps) {
         maxMembers: parseInt(maxMembers) || 10,
       });
     } else if (postType === 'reel') {
-      addPost({
-        type: 'reel',
-        content: caption,
-        videoUrl: videoUrl || undefined,
-        imageUrl: imageUrl || undefined,
-      });
+      setIsUploading(true);
+
+      try {
+        let finalVideoUrl = videoUrl || undefined;
+
+        // If we have a video file, save it to IndexedDB
+        if (videoFile) {
+          const videoId = `video_${Date.now()}`;
+          finalVideoUrl = await saveVideo(videoId, videoFile);
+        }
+
+        addPost({
+          type: 'reel',
+          content: caption,
+          videoUrl: finalVideoUrl,
+          imageUrl: imageUrl || undefined,
+        });
+
+        onClose();
+        navigate('/reels');
+        // Reset form and return early
+        setPostType('general');
+        setCaption('');
+        setImageUrl('');
+        setImagePreview(null);
+        setVideoUrl('');
+        setVideoPreview(null);
+        setVideoFile(null);
+        setIsUploading(false);
+        return;
+      } catch (error) {
+        console.error('Failed to save video:', error);
+        alert('Failed to save video. Please try again.');
+        setIsUploading(false);
+        return;
+      }
     }
 
     onClose();
@@ -102,6 +143,7 @@ export function CreatePostModal({ isOpen, onClose }: CreatePostModalProps) {
     setImagePreview(null);
     setVideoUrl('');
     setVideoPreview(null);
+    setVideoFile(null);
     setEventTitle('');
     setEventDate('');
     setEventTime('');
@@ -311,23 +353,30 @@ export function CreatePostModal({ isOpen, onClose }: CreatePostModalProps) {
           {/* Reel Fields */}
           {postType === 'reel' && (
             <>
+              {/* Video upload for reel */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Video</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Upload Video (MP4)</label>
                 <input
                   type="file"
                   ref={videoInputRef}
-                  accept="video/*"
+                  accept="video/mp4,video/webm,video/quicktime"
                   onChange={handleVideoChange}
                   className="hidden"
                 />
                 {videoPreview ? (
                   <div className="relative">
-                    <video src={videoPreview} className="w-full h-48 object-cover rounded-lg" controls />
+                    <video
+                      src={videoPreview}
+                      className="w-full h-48 object-cover rounded-lg bg-black"
+                      controls
+                      playsInline
+                    />
                     <button
                       type="button"
                       onClick={() => {
                         setVideoPreview(null);
                         setVideoUrl('');
+                        setVideoFile(null);
                         if (videoInputRef.current) videoInputRef.current.value = '';
                       }}
                       className="absolute top-2 right-2 p-1 bg-black/50 rounded-full text-white hover:bg-black/70"
@@ -340,19 +389,21 @@ export function CreatePostModal({ isOpen, onClose }: CreatePostModalProps) {
                 ) : (
                   <div
                     onClick={() => videoInputRef.current?.click()}
-                    className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-ucsc-blue transition-colors cursor-pointer"
+                    className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-ucsc-blue transition-colors cursor-pointer"
                   >
                     <svg className="w-8 h-8 text-gray-400 mx-auto mb-2" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M3.375 19.5h17.25m-17.25 0a1.125 1.125 0 01-1.125-1.125M3.375 19.5h1.5C5.496 19.5 6 18.996 6 18.375m-3.75 0V5.625m0 12.75v-1.5c0-.621.504-1.125 1.125-1.125m18.375 2.625V5.625m0 12.75c0 .621-.504 1.125-1.125 1.125m1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125m0 3.75h-1.5A1.125 1.125 0 0118 18.375M20.625 4.5H3.375m17.25 0c.621 0 1.125.504 1.125 1.125M20.625 4.5h-1.5C18.504 4.5 18 5.004 18 5.625m3.75 0v1.5c0 .621-.504 1.125-1.125 1.125M3.375 4.5c-.621 0-1.125.504-1.125 1.125M3.375 4.5h1.5C5.496 4.5 6 5.004 6 5.625m-3.75 0v1.5c0 .621.504 1.125 1.125 1.125m0 0h1.5m-1.5 0c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125m1.5-3.75C5.496 8.25 6 7.746 6 7.125v-1.5M4.875 8.25C5.496 8.25 6 8.754 6 9.375v1.5m0-5.25v5.25m0-5.25C6 5.004 6.504 4.5 7.125 4.5h9.75c.621 0 1.125.504 1.125 1.125m1.125 2.625h1.5m-1.5 0A1.125 1.125 0 0118 7.125v-1.5m1.125 2.625c-.621 0-1.125.504-1.125 1.125v1.5m2.625-2.625c.621 0 1.125.504 1.125 1.125v1.5c0 .621-.504 1.125-1.125 1.125M18 5.625v5.25M7.125 12h9.75m-9.75 0A1.125 1.125 0 016 10.875M7.125 12C6.504 12 6 12.504 6 13.125m0-2.25C6 11.496 5.496 12 4.875 12M18 10.875c0 .621-.504 1.125-1.125 1.125M18 10.875c0 .621.504 1.125 1.125 1.125m-2.25 0c.621 0 1.125.504 1.125 1.125m-12 5.25v-5.25m0 5.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125m-12 0v-1.5c0-.621-.504-1.125-1.125-1.125M18 18.375v-5.25m0 5.25v-1.5c0-.621.504-1.125 1.125-1.125M18 13.125v1.5c0 .621.504 1.125 1.125 1.125M18 13.125c0-.621.504-1.125 1.125-1.125M6 13.125v1.5c0 .621-.504 1.125-1.125 1.125M6 13.125C6 12.504 5.496 12 4.875 12m-1.5 0h1.5m14.25 0h1.5" />
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 10.5l4.72-4.72a.75.75 0 011.28.53v11.38a.75.75 0 01-1.28.53l-4.72-4.72M4.5 18.75h9a2.25 2.25 0 002.25-2.25v-9a2.25 2.25 0 00-2.25-2.25h-9A2.25 2.25 0 002.25 7.5v9a2.25 2.25 0 002.25 2.25z" />
                     </svg>
                     <p className="text-sm text-gray-500">Click to upload a video</p>
-                    <p className="text-xs text-gray-400 mt-1">Or upload an image for a photo reel</p>
+                    <p className="text-xs text-green-600 mt-1">Videos are saved locally and persist</p>
                   </div>
                 )}
               </div>
-              {!videoPreview && (
+
+              {/* Alternative: Image upload */}
+              {!videoPreview && !videoFile && (
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Or add an image instead</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Or upload an image</label>
                   <input
                     type="file"
                     ref={fileInputRef}
@@ -362,7 +413,7 @@ export function CreatePostModal({ isOpen, onClose }: CreatePostModalProps) {
                   />
                   {imagePreview ? (
                     <div className="relative">
-                      <img src={imagePreview} alt="Preview" className="w-full h-32 object-cover rounded-lg" />
+                      <img src={imagePreview} alt="Preview" className="w-full h-48 object-cover rounded-lg" />
                       <button
                         type="button"
                         onClick={() => {
@@ -378,16 +429,16 @@ export function CreatePostModal({ isOpen, onClose }: CreatePostModalProps) {
                       </button>
                     </div>
                   ) : (
-                    <button
-                      type="button"
+                    <div
                       onClick={() => fileInputRef.current?.click()}
-                      className="w-full py-2 border border-gray-200 rounded-lg text-sm text-gray-600 hover:bg-gray-50"
+                      className="border-2 border-dashed border-gray-200 rounded-lg p-4 text-center hover:border-gray-300 transition-colors cursor-pointer"
                     >
-                      Upload Image
-                    </button>
+                      <p className="text-sm text-gray-400">Click to upload an image instead</p>
+                    </div>
                   )}
                 </div>
               )}
+
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Caption</label>
                 <textarea
@@ -477,12 +528,25 @@ export function CreatePostModal({ isOpen, onClose }: CreatePostModalProps) {
           {/* Submit Button */}
           <button
             type="submit"
-            className="w-full py-3 bg-ucsc-blue text-ucsc-gold font-semibold rounded-lg hover:opacity-90 transition-opacity"
+            disabled={isUploading}
+            className="w-full py-3 bg-ucsc-blue text-ucsc-gold font-semibold rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {postType === 'general' && 'Share Post'}
-            {postType === 'reel' && 'Share Reel'}
-            {postType === 'event' && 'Create Event'}
-            {postType === 'study' && 'Create Study Group'}
+            {isUploading ? (
+              <span className="flex items-center justify-center gap-2">
+                <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                </svg>
+                Uploading...
+              </span>
+            ) : (
+              <>
+                {postType === 'general' && 'Share Post'}
+                {postType === 'reel' && 'Share Reel'}
+                {postType === 'event' && 'Create Event'}
+                {postType === 'study' && 'Create Study Group'}
+              </>
+            )}
           </button>
         </form>
       </div>

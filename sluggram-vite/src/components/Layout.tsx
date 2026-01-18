@@ -14,6 +14,18 @@ export function Layout({ children }: LayoutProps) {
   const { user, logout } = useAuth0();
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
 
+  const handleLogout = () => {
+    // Only clear session storage for auth, keep user data in localStorage
+    sessionStorage.clear();
+
+    // Logout and force account selection on next login
+    logout({
+      logoutParams: {
+        returnTo: window.location.origin,
+      },
+    });
+  };
+
   const isActive = (path: string) => location.pathname === path;
 
   // Get username from localStorage profile or fall back to name
@@ -58,7 +70,7 @@ export function Layout({ children }: LayoutProps) {
               </span>
             </button>
             <button
-              onClick={() => logout({ logoutParams: { returnTo: window.location.origin } })}
+              onClick={handleLogout}
               className="text-ucsc-gold hover:text-white transition-colors p-2"
               title="Sign Out"
             >

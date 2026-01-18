@@ -3,6 +3,7 @@ import { useAuth0 } from '@auth0/auth0-react';
 import { Layout } from './Layout';
 import { usePosts } from '../contexts/PostsContext';
 import { AnimatedSlug } from './AnimatedSlug';
+import { VideoPlayer } from './VideoPlayer';
 
 export function FeedPage() {
   const { user } = useAuth0();
@@ -67,9 +68,10 @@ export function FeedPage() {
                 <span className={`px-2 py-1 text-xs font-medium rounded ${
                   post.type === 'event' ? 'bg-purple-100 text-purple-700' :
                   post.type === 'study' ? 'bg-green-100 text-green-700' :
+                  post.type === 'reel' ? 'bg-pink-100 text-pink-700' :
                   'bg-gray-100 text-gray-700'
                 }`}>
-                  {post.type === 'event' ? '📅 Event' : post.type === 'study' ? '📚 Study Group' : '📸 Post'}
+                  {post.type === 'event' ? '📅 Event' : post.type === 'study' ? '📚 Study Group' : post.type === 'reel' ? '🎬 Reel' : '📸 Post'}
                 </span>
               </div>
 
@@ -77,6 +79,26 @@ export function FeedPage() {
               {post.type === 'general' && post.imageUrl && (
                 <div className="aspect-square bg-gray-100">
                   <img src={post.imageUrl} alt="" className="w-full h-full object-cover" />
+                </div>
+              )}
+
+              {/* Reel Content */}
+              {post.type === 'reel' && (
+                <div className="aspect-video bg-black">
+                  {post.videoUrl ? (
+                    <VideoPlayer
+                      src={post.videoUrl}
+                      className="w-full h-full object-contain"
+                      controls
+                      playsInline
+                    />
+                  ) : post.imageUrl ? (
+                    <img src={post.imageUrl} alt="" className="w-full h-full object-contain" />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center text-white">
+                      <p className="text-lg">{post.content}</p>
+                    </div>
+                  )}
                 </div>
               )}
 

@@ -39,7 +39,7 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
               <span className="text-2xl font-bold text-ucsc-gold">SlugGram</span>
             </div>
             <button
-              onClick={() => loginWithRedirect({ authorizationParams: { connection: 'google-oauth2' } })}
+              onClick={() => loginWithRedirect({ authorizationParams: { connection: 'google-oauth2', prompt: 'select_account' } })}
               className="px-5 py-2.5 text-sm font-semibold text-ucsc-blue bg-ucsc-gold rounded-full hover:bg-yellow-400 transition-all hover:scale-105 shadow-lg"
             >
               Sign In
@@ -78,7 +78,7 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
             {/* CTA Button */}
             <div className="pt-6">
               <button
-                onClick={() => loginWithRedirect({ authorizationParams: { connection: 'google-oauth2' } })}
+                onClick={() => loginWithRedirect({ authorizationParams: { connection: 'google-oauth2', prompt: 'select_account' } })}
                 className="group inline-flex items-center gap-3 px-8 py-4 bg-ucsc-gold text-ucsc-blue font-bold text-lg rounded-full hover:bg-yellow-400 transition-all hover:scale-105 shadow-2xl shadow-ucsc-gold/30"
               >
                 <svg className="w-6 h-6" viewBox="0 0 24 24">
@@ -199,7 +199,7 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
             </p>
 
             <button
-              onClick={() => loginWithRedirect({ authorizationParams: { connection: 'google-oauth2' } })}
+              onClick={() => loginWithRedirect({ authorizationParams: { connection: 'google-oauth2', prompt: 'select_account' } })}
               className="w-full bg-ucsc-blue hover:bg-blue-800 text-ucsc-gold font-bold py-3.5 px-4 rounded-xl transition-colors shadow-lg"
             >
               Try a different account
