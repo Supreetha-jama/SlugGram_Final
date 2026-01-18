@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { Layout } from './Layout';
 
 // Placeholder trending tags
@@ -22,7 +21,6 @@ const suggestedAccounts = [
 
 export function SearchPage() {
   const [searchQuery, setSearchQuery] = useState('');
-  const navigate = useNavigate();
 
   const filteredTags = trendingTags.filter(t =>
     t.tag.toLowerCase().includes(searchQuery.toLowerCase())
